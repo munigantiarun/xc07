@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id         Int      @id
+  name       String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  is_edited  Boolean  @default(false)
+
+  projects                    Project[]
+  opportunities               Opportunity[]
+  opportunityMonthlyEstimates OpportunityMonthlyEstimate[]
+  revenueForecasts            RevenueForecast[]
+  revenueActuals              RevenueActual[]
+  billedInvoices              BilledInvoice[]
+  projectProfitabilities      ProjectProfitability[]
+}
+
+model Project {
+  id           Int      @id
+  name         String?
+  client_id    Int?
+  billing_type String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  is_edited    Boolean  @default(false)
+
+  client                 Client?                @relation(fields: [client_id], references: [id])
+  projectProfitabilities ProjectProfitability[]
+}
+
+model Opportunity {
+  id               Int      @id
+  client_id        Int?
+  name             String?
+  stage            String?
+  owner            String?
+  updated_on       String?
+  start_date       String?
+  finish_date      String?
+  probability      Float?
+  total_revenue    Float?
+  weighted_revenue Float?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+  is_edited        Boolean  @default(false)
+
+  client Client? @relation(fields: [client_id], references: [id])
+}
+
+model OpportunityMonthlyEstimate {
+  id                      Int      @id
+  client_id               Int?
+  period                  String?
+  weighted_revenue_amount Float?
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+  is_edited               Boolean  @default(false)
+
+  client Client? @relation(fields: [client_id], references: [id])
+}
+
+model Resource {
+  id                     Int      @id
+  name                   String?
+  level                  String?
+  utilization_target_pct Float?
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+  is_edited              Boolean  @default(false)
+
+  utilizationMonthly      UtilizationMonthly[]
+  utilizationYtd          UtilizationYTD[]
+  billedRevenueByResource BilledRevenueByResource[]
+}
+
+model RevenueForecast {
+  id                      Int      @id
+  client_id               Int?
+  period                  String?
+  forecast_revenue_amount Float?
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+  is_edited               Boolean  @default(false)
+
+  client Client? @relation(fields: [client_id], references: [id])
+}
+
+model RevenueActual {
+  id                    Int      @id
+  client_id             Int?
+  period                String?
+  actual_revenue_amount Float?
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+  is_edited             Boolean  @default(false)
+
+  client Client? @relation(fields: [client_id], references: [id])
+}
+
+model BilledInvoice {
+  id                    Int      @id
+  client_id             Int?
+  period                String?
+  billed_invoice_amount Float?
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+  is_edited             Boolean  @default(false)
+
+  client Client? @relation(fields: [client_id], references: [id])
+}
+
+model ManagedRevenueYTD {
+  id              Int      @id
+  project_manager String?
+  revenue         Float?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  is_edited       Boolean  @default(false)
+}
+
+model SalesRevenueYTD {
+  id              Int      @id
+  project_manager String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  is_edited       Boolean  @default(false)
+}
+
+model ProjectProfitability {
+  id                  Int      @id
+  project_id          Int?
+  client_id           Int?
+  billing_type        String?
+  to_date_revenue     Float?
+  to_date_cost        Float?
+  to_date_margin      Float?
+  to_date_margin_pct  Float?
+  forecast_revenue    Float?
+  forecast_cost       Float?
+  forecast_margin     Float?
+  forecast_margin_pct Float?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+  is_edited           Boolean  @default(false)
+
+  project Project? @relation(fields: [project_id], references: [id])
+  client  Client?  @relation(fields: [client_id], references: [id])
+}
+
+model UtilizationMonthly {
+  id                         Int      @id
+  resource_id                Int?
+  period                     String?
+  forecasted_utilization_pct Float?
+  actual_utilization_pct     Float?
+  created_at                 DateTime @default(now())
+  updated_at                 DateTime @updatedAt
+  is_edited                  Boolean  @default(false)
+
+  resource Resource? @relation(fields: [resource_id], references: [id])
+}
+
+model UtilizationYTD {
+  id                      Int      @id
+  resource_id             Int?
+  utilization_target_type String?
+  capacity_hours_ytd      Float?
+  actual_hours_ytd        Float?
+  utilization_ytd         Float?
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+  is_edited               Boolean  @default(false)
+
+  resource Resource? @relation(fields: [resource_id], references: [id])
+}
+
+model BilledRevenueByResource {
+  id                Int      @id
+  resource_id       Int?
+  level             String?
+  effective_revenue Float?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  is_edited         Boolean  @default(false)
+
+  resource Resource? @relation(fields: [resource_id], references: [id])
+}
+
+model ConsolidatedFinancialEntry {
+  id         Int      @id
+  type       String?
+  name       String?
+  period     String?
+  amount     Float?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  is_edited  Boolean  @default(false)
+}

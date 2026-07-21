@@ -1,309 +1,419 @@
-# Continuum Replica — Discovery & Build Procedure
+# Continuum Demo Replica — Finance Lead
 
-Goal: build a **local replica** of [Continuum](https://continuum.crossconceptinc.com/) (CrossConcept Continuum PSA) with **dummy data**, using your authenticated access for discovery — without needing production database credentials up front.
+A Continuum PSA lookalike for **Finance Leads**: review KPIs, **add** finance data on each section page, and **edit** existing rows. Edited records show a WhatsApp-style **Edited** badge.
 
-This doc is the decision guide. We do **not** build until you choose an approach below.
+Inspired by [CrossConcept Continuum PSA](https://www.continuumpsa.io/) / [continuum.crossconceptinc.com](https://continuum.crossconceptinc.com/).  
+Core columns match Continuum analytics tables from **Data GenFlow → Microsoft Fabric**, plus local audit fields for edit tracking.
 
----
-
-## 1. What we are replicating
-
-Continuum is a cloud PSA. From the public product surface, expect modules such as:
-
-| Area | Likely screens / entities |
-|------|---------------------------|
-| Auth | Login, session, roles/permissions |
-| CRM | Leads, opportunities, accounts, contacts, activities |
-| Projects | Projects, tasks, Gantt, budgets, milestones |
-| Resources | People, skills, availability, scheduling, rates |
-| Time & expense | Timesheets, expenses, approvals |
-| Finance | Invoicing, A/R, revenue recognition hooks |
-| BI | Dashboards, reports |
-| Admin | Users, org settings, integrations (e.g. QuickBooks) |
-
-Scope for v1 should be a **subset** (see Phase plan). A full 1:1 clone is a large product, not a weekend project.
+| | |
+|--|--|
+| **Audience** | Finance Lead (end user) |
+| **Auth** | None (open local demo) |
+| **Out of scope** | Chatbot / insights apps, real Continuum login, pixel-perfect proprietary assets |
 
 ---
 
-## 2. Legal / practical note
+## Goals
 
-Use this only for **internal learning / prototyping** with **synthetic data**. Do not copy proprietary assets, trademarks, or production customer data into a public repo. Prefer original branding (or clearly “demo / clone” naming) unless you have written permission.
+- Finance-first UI: dashboard, revenue, profitability, consolidated P&L, pipeline, clients, projects, resources
+- Seeded **synthetic** data (12 rows per table to start)
+- **Add** forms on each section page (not a single catch-all `/entry` page)
+- **Edit** existing rows via modal on each table
+- **Edited** badge after any post-create update
+- REST APIs: **GET** + **POST** + **PATCH**
+- PostgreSQL via **Docker Desktop**
 
 ---
 
-## 3. Recommended overall approach
+## Data flow
 
-```
-Authenticated browsing
+```text
+Continuum (source)
         │
-        ├─► Map UI (screens, nav, flows)
-        ├─► Capture Network/API (schemas, payloads)
-        ├─► Infer data model (entities + relations)
-        └─► Decide scope + stack
-                │
-                ▼
-        Build replica (API + UI + seed dummy data)
+        ▼
+Data GenFlow  ──►  Microsoft Fabric (tabular model)
+        │
+        ▼
+This repo recreates the same business tables locally
+        │
+        ├─► PostgreSQL (Docker) + Prisma (+ audit columns)
+        ├─► REST APIs (GET / POST / PATCH)
+        └─► Finance Lead UI
+              ├── Dashboard (aggregates)
+              └── Section pages
+                    ├── Add forms
+                    ├── Data tables
+                    ├── Edit (modal)
+                    └── Edited badge
 ```
 
-You do **not** need the live database. Browser Network + Application tabs usually give enough to reverse-engineer:
-
-- REST/GraphQL endpoints
-- Request/response JSON shapes
-- Auth mechanism (cookie / JWT / session)
-- Entity fields and relationships
+Fabric is **not** connected at runtime. Schema + seed data stay local so the demo is self-contained.
 
 ---
 
-## 4. What you can provide from the browser (preferred)
+## How Finance Leads use the app
 
-Log in at `https://continuum.crossconceptinc.com/`, open DevTools, and collect the following. You can paste exports into this repo under `discovery/` (we can create that folder when you start).
+1. Open **http://localhost:3000** — Finance dashboard KPIs.
+2. Open a **section** (Revenue, Profitability, Clients, …).
+3. **Add** — use forms at the top of the page (`#add`).
+4. **Edit** — click **Edit** on a table row, change fields, **Save changes**.
+5. An **Edited** badge appears next to that record (only after it has been updated once).
+6. Tables and dashboard refresh with the new values.
 
-### 4.1 Navigation & screen inventory
+Suggested create order from scratch:
 
-For each major area you care about:
+`Clients` → `Projects` → `Revenue` / `Profitability` / `Financials` → optional `Pipeline` & `Resources`
 
-1. Screenshot (or short Loom) of the screen  
-2. URL path (e.g. `/projects/123`)  
-3. One-line description of what the user does there  
+---
 
-Deliverable: a simple list like:
+## UI pages
+
+| Route | Review | Add / Edit |
+|-------|--------|------------|
+| `/` | Finance dashboard | Links to sections |
+| `/revenue` | Forecast, actual, billed, YTD | Add + Edit + Edited badge |
+| `/profitability` | Project profitability | Add + Edit + Edited badge |
+| `/financials` | Consolidated P&L | Add + Edit + Edited badge |
+| `/pipeline` | Opportunities + monthly estimates | Add + Edit + Edited badge |
+| `/clients` | Client list | Add + Edit + Edited badge |
+| `/clients/[id]` | Client detail | — |
+| `/projects` | Project list | Add + Edit + Edited badge |
+| `/projects/[id]` | Project detail + profitability | — |
+| `/resources` | Resources, util, billed revenue | Add + Edit + Edited badge |
+| `/resources/[id]` | Resource detail | — |
+
+### Edit & Edited badge
+
+| Behavior | Detail |
+|----------|--------|
+| Edit UI | Modal form pre-filled from the row; saves with `PATCH` |
+| Badge | Small **Edited** label next to the name/period (WhatsApp-style) |
+| When shown | Only when `is_edited = true` (set on first successful update) |
+| New rows | Created with `is_edited = false` — no badge until edited |
+
+---
+
+## Features mapped to tables
+
+| UI area | Tables | Page |
+|---------|--------|------|
+| Clients | `Client` | `/clients` |
+| Projects | `Project` | `/projects` |
+| Pipeline | `Opportunity`, `OpportunityMonthlyEstimate` | `/pipeline` |
+| Revenue | `RevenueForecast`, `RevenueActual`, `BilledInvoice`, `ManagedRevenueYTD`, `SalesRevenueYTD` | `/revenue` |
+| Profitability | `ProjectProfitability` | `/profitability` |
+| Financials | `ConsolidatedFinancialEntry` | `/financials` |
+| Resources | `Resource`, `UtilizationMonthly`, `UtilizationYTD`, `BilledRevenueByResource` | `/resources` |
+| Dashboard | Aggregates across the above | `/` |
+
+---
+
+## Database structure
+
+### Business columns (Fabric / GenFlow)
+
+Source of truth for Continuum-shaped fields. Reference copy: [`docs/schema.sql`](docs/schema.sql).
+
+```sql
+CREATE TABLE Client (
+    id INTEGER PRIMARY KEY,
+    name TEXT
+);
+
+CREATE TABLE Project (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    client_id INTEGER REFERENCES Client(id),
+    billing_type TEXT
+);
+
+CREATE TABLE Opportunity (
+    id INTEGER PRIMARY KEY,
+    client_id INTEGER REFERENCES Client(id),
+    name TEXT,
+    stage TEXT,
+    owner TEXT,
+    updated_on TEXT,
+    start_date TEXT,
+    finish_date TEXT,
+    probability REAL,
+    total_revenue REAL,
+    weighted_revenue REAL
+);
+
+CREATE TABLE OpportunityMonthlyEstimate (
+    id INTEGER PRIMARY KEY,
+    client_id INTEGER REFERENCES Client(id),
+    period TEXT,
+    weighted_revenue_amount REAL
+);
+
+CREATE TABLE Resource (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    level TEXT,
+    utilization_target_pct REAL
+);
+
+CREATE TABLE RevenueForecast (
+    id INTEGER PRIMARY KEY,
+    client_id INTEGER REFERENCES Client(id),
+    period TEXT,
+    forecast_revenue_amount REAL
+);
+
+CREATE TABLE RevenueActual (
+    id INTEGER PRIMARY KEY,
+    client_id INTEGER REFERENCES Client(id),
+    period TEXT,
+    actual_revenue_amount REAL
+);
+
+CREATE TABLE BilledInvoice (
+    id INTEGER PRIMARY KEY,
+    client_id INTEGER REFERENCES Client(id),
+    period TEXT,
+    billed_invoice_amount REAL
+);
+
+CREATE TABLE ManagedRevenueYTD (
+    id INTEGER PRIMARY KEY,
+    project_manager TEXT,
+    revenue REAL
+);
+
+CREATE TABLE SalesRevenueYTD (
+    id INTEGER PRIMARY KEY,
+    project_manager TEXT
+);
+
+CREATE TABLE ProjectProfitability (
+    id INTEGER PRIMARY KEY,
+    project_id INTEGER REFERENCES Project(id),
+    client_id INTEGER REFERENCES Client(id),
+    billing_type TEXT,
+    to_date_revenue REAL,
+    to_date_cost REAL,
+    to_date_margin REAL,
+    to_date_margin_pct REAL,
+    forecast_revenue REAL,
+    forecast_cost REAL,
+    forecast_margin REAL,
+    forecast_margin_pct REAL
+);
+
+CREATE TABLE UtilizationMonthly (
+    id INTEGER PRIMARY KEY,
+    resource_id INTEGER REFERENCES Resource(id),
+    period TEXT,
+    forecasted_utilization_pct REAL,
+    actual_utilization_pct REAL
+);
+
+CREATE TABLE UtilizationYTD (
+    id INTEGER PRIMARY KEY,
+    resource_id INTEGER REFERENCES Resource(id),
+    utilization_target_type TEXT,
+    capacity_hours_ytd REAL,
+    actual_hours_ytd REAL,
+    utilization_ytd REAL
+);
+
+CREATE TABLE BilledRevenueByResource (
+    id INTEGER PRIMARY KEY,
+    resource_id INTEGER REFERENCES Resource(id),
+    level TEXT,
+    effective_revenue REAL
+);
+
+CREATE TABLE ConsolidatedFinancialEntry (
+    id INTEGER PRIMARY KEY,
+    type TEXT,
+    name TEXT,
+    period TEXT,
+    amount REAL
+);
+```
+
+### Audit columns (local — every table)
+
+Added in Prisma beyond the Fabric export:
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `created_at` | timestamptz | Set on create |
+| `updated_at` | timestamptz | Auto-updated on change |
+| `is_edited` | boolean | `false` on create; `true` after `PATCH` → **Edited** badge |
+
+### Entity relationships
 
 ```text
-Dashboard          /
-Projects list      /projects
-Project detail     /projects/:id
-Timesheet          /timesheets
-...
+Client
+  ├── Project ──► ProjectProfitability
+  ├── Opportunity
+  ├── OpportunityMonthlyEstimate
+  ├── RevenueForecast
+  ├── RevenueActual
+  └── BilledInvoice
+
+Resource
+  ├── UtilizationMonthly
+  ├── UtilizationYTD
+  └── BilledRevenueByResource
+
+ManagedRevenueYTD / SalesRevenueYTD     (by project_manager)
+ConsolidatedFinancialEntry              (type / name / period / amount)
 ```
 
-### 4.2 Network HAR / API capture (highest value)
+> **Note:** `SalesRevenueYTD` only has `id` + `project_manager` in the Fabric export; implemented as-is.
 
-1. Open DevTools → **Network**  
-2. Check **Preserve log**  
-3. Filter: **Fetch/XHR** (and WS if present)  
-4. Click through the flows you want replicated  
-5. Export **HAR** (right-click list → Save all as HAR)  
+### Create / update helpers
 
-Also note for a few key calls:
-
-- Method + URL  
-- Request headers (especially `Authorization`, cookies — **redact tokens** before sharing)  
-- Request JSON body  
-- Response JSON (status + body)  
-
-**Sanitize before sharing:** strip bearer tokens, session cookies, real emails, customer names, SSNs, invoice amounts tied to real clients. Replace with `REDACTED` or dummy values.
-
-### 4.3 Application / storage
-
-In DevTools → **Application**:
-
-- Cookies (names only + purpose if obvious)  
-- Local Storage / Session Storage keys  
-- Any cached API payloads  
-
-### 4.4 Frontend clues (optional but useful)
-
-In DevTools → **Sources** or page view-source:
-
-- Framework hints (React/Angular/Vue/jQuery)  
-- Bundle names, API base URL (`/api/...`, subdomain)  
-- Feature flags if visible  
-
-### 4.5 Console resources you offered
-
-Any of these help, in priority order:
-
-| Priority | Artifact | Why |
-|----------|----------|-----|
-| P0 | HAR of core flows | Exact API contracts |
-| P0 | Screen map + screenshots | UI target |
-| P1 | Redacted sample JSON for each entity | Seed schema |
-| P1 | Role matrix (admin vs PM vs time-only) | Auth model |
-| P2 | Export CSVs / reports from Continuum | Field names |
-| P2 | Continuum API docs (if your plan includes API) | Official schema |
-| P3 | DB dump / ERD (only if you have backend access) | Rare; usually unnecessary |
-
-A production DB dump is **not required** and is riskier (PII). Prefer API shapes + dummy seed.
+- Record **ids** auto-increment when omitted on create.
+- Opportunity **weighted_revenue** fills from `probability × total_revenue` when omitted.
+- Opportunity **probability** accepts `0–1` or `0–100` (% from the UI).
+- Profitability **margin** / **margin %** auto-calculate from revenue and cost when omitted.
+- Utilization YTD **utilization_ytd** auto-calculates from capacity and actual hours when omitted.
+- Any successful **PATCH** sets `is_edited = true`.
 
 ---
 
-## 5. How we infer “database structure” without a DB
+## REST API surface
 
-From API responses we build an **entity model**, for example:
+**GET** = list / detail · **POST** = create · **PATCH** = update (`is_edited = true`).
 
 ```text
-User ──< TimesheetEntry >── Project
-Project ──< Task
-Project ──< Invoice
-Account ──< Opportunity
-Account ──< Project
-User ── Role / Permission
+GET|POST       /api/clients
+GET|PATCH      /api/clients/:id
+
+GET|POST       /api/projects
+GET|PATCH      /api/projects/:id
+GET            /api/projects/:id/profitability
+
+GET|POST       /api/opportunities
+GET|PATCH      /api/opportunities/:id
+GET|POST       /api/opportunity-monthly-estimates
+PATCH          /api/opportunity-monthly-estimates/:id
+
+GET|POST       /api/resources
+GET|PATCH      /api/resources/:id
+GET            /api/resources/:id/utilization-monthly
+GET            /api/resources/:id/utilization-ytd
+GET            /api/resources/:id/billed-revenue
+
+GET|POST       /api/revenue/forecast
+PATCH          /api/revenue/forecast/:id
+GET|POST       /api/revenue/actual
+PATCH          /api/revenue/actual/:id
+GET|POST       /api/revenue/billed-invoices
+PATCH          /api/revenue/billed-invoices/:id
+
+GET|POST       /api/managed-revenue-ytd
+PATCH          /api/managed-revenue-ytd/:id
+GET|POST       /api/sales-revenue-ytd
+PATCH          /api/sales-revenue-ytd/:id
+
+GET|POST       /api/project-profitability
+PATCH          /api/project-profitability/:id
+GET|POST       /api/utilization/monthly
+PATCH          /api/utilization/monthly/:id
+GET|POST       /api/utilization/ytd
+PATCH          /api/utilization/ytd/:id
+GET|POST       /api/billed-revenue-by-resource
+PATCH          /api/billed-revenue-by-resource/:id
+
+GET|POST       /api/consolidated-financial
+PATCH          /api/consolidated-financial/:id
+GET            /api/dashboard/summary
+GET            /api/health
 ```
 
-Process:
-
-1. List unique resource paths (`/api/projects`, `/api/timesheets`, …)  
-2. For each, document fields, types, required vs optional  
-3. Note foreign keys (`projectId`, `userId`, …)  
-4. Note enums/status workflows (`draft → submitted → approved`)  
-5. Turn that into Prisma/Drizzle schema (or SQL) + seed scripts  
-
-If Continuum exposes a documented REST API for your tenant, that can replace or augment HAR capture.
+JSON field names match SQL columns (`client_id`, `forecast_revenue_amount`, `is_edited`, etc.).
 
 ---
 
-## 6. Decision points (choose before coding)
+## Tech stack
 
-### A. Fidelity level
-
-| Option | Meaning | Effort |
-|--------|---------|--------|
-| **A1 — Lookalike shell** | Login + nav + a few list/detail pages, fake data | Small |
-| **A2 — Core PSA vertical** | Auth + projects + tasks + timesheets + simple dashboard | Medium (recommended) |
-| **A3 — Broad PSA** | A2 + CRM + resources + invoicing + reports | Large |
-| **A4 — Pixel / full clone** | Match layouts, menus, every module | Very large; not recommended first |
-
-**Recommendation:** start **A2**, design schema so CRM/finance can be added later.
-
-### B. How we get the model
-
-| Option | Pros | Cons |
-|--------|------|------|
-| **B1 — Browser HAR + screens** | Fast, no DB access, enough for replica | You click through and sanitize |
-| **B2 — Official Continuum API docs** | Cleaner contracts | May not cover UI-only endpoints |
-| **B3 — DB schema / dump** | Exact tables | Access + PII risk; usually overkill |
-
-**Recommendation:** **B1**, optionally plus **B2** if you have API access.
-
-### C. Tech stack (proposal — adjustable)
-
-| Layer | Suggestion |
-|-------|------------|
-| Frontend | Next.js (App Router) + TypeScript |
-| UI | Tailwind; approximate Continuum layout, not copy assets blindly |
-| Auth | NextAuth / simple session + roles |
-| API | Next.js Route Handlers or separate Nest/Fastify API |
-| DB | PostgreSQL + Prisma |
-| Seed | Faker / scripted dummy org, users, projects, timesheets |
-| Deploy | Local Docker Compose first |
-
-### D. Data policy
-
-- **No production data** in git  
-- Seed only synthetic companies, people, hours, invoices  
-- Keep real HAR/tokens out of the repo (use `discovery/` + `.gitignore`)
+| Layer | Choice |
+|-------|--------|
+| Frontend | Next.js (App Router) + TypeScript + Tailwind |
+| API | Next.js Route Handlers |
+| DB | PostgreSQL 16 (Docker Desktop) + Prisma |
+| Seed | `apps/web/prisma/seed.ts` — 12 rows per table |
 
 ---
 
-## 7. Phased procedure (once you approve)
-
-### Phase 0 — Kickoff (you + agent)
-
-1. Agree fidelity (**A2** recommended) and stack  
-2. You log in and produce screen map + HAR for those modules  
-3. Share sanitized artifacts in `discovery/`  
-4. Agent produces: entity list, ERD sketch, API inventory, screen backlog  
-
-**Exit:** written scope doc you approve.
-
-### Phase 1 — Skeleton
-
-1. Scaffold app + Postgres + Prisma  
-2. Auth (login / logout / role stub)  
-3. App shell: sidebar, header, placeholder routes matching Continuum nav  
-4. Seed: org + admin user + dummy users  
-
-**Exit:** you can log in locally and click empty module pages.
-
-### Phase 2 — Core modules (A2)
-
-For each module (Projects → Tasks → Timesheets → Dashboard):
-
-1. Implement list + detail (+ create/edit as needed)  
-2. Match primary fields from captured JSON  
-3. Wire statuses/workflows that matter for demos  
-4. Seed realistic dummy data  
-
-**Exit:** end-to-end demo path works with dummy data.
-
-### Phase 3 — Expand (optional)
-
-CRM, resource scheduling, invoicing, reports — one module at a time, same capture → model → UI loop.
-
-### Phase 4 — Polish
-
-Permissions by role, empty states, filters, pagination, export stubs, basic charts.
-
----
-
-## 8. Concrete “click path” for your first HAR (A2)
-
-While Network is recording, do this once after login:
-
-1. Land on **Dashboard** — wait for widgets to load  
-2. Open **Projects** list — sort/filter once if available  
-3. Open one **Project** detail — tasks, budget, team tabs if any  
-4. Open **Timesheets** — create or edit one entry (or open existing)  
-5. Open **Approvals** if present  
-6. Open **Admin / Users** if visible (for role fields)  
-7. Log out / session refresh if you want auth endpoints  
-
-Export HAR → sanitize → drop into `discovery/phase0-core.har` (or paste key JSON samples).
-
----
-
-## 9. What I need from you to proceed
-
-Reply with choices (copy/paste):
-
-```text
-Fidelity: A1 | A2 | A3 | A4
-Model source: B1 | B2 | B3
-Stack OK with Next.js + Postgres + Prisma? Yes / No (prefer: …)
-I will provide: [ ] screen map  [ ] HAR  [ ] API docs  [ ] screenshots
-Must-have modules for v1: …
-Nice-to-have later: …
-Branding: Continuum-like demo name / original name: …
-```
-
-Then we create:
-
-- `discovery/` + `.gitignore` for secrets  
-- Scope doc from your artifacts  
-- App scaffold only after Phase 0 sign-off  
-
----
-
-## 10. Suggested repo layout (after kickoff)
+## Repo layout
 
 ```text
 XCWorkspace/
-  README.md                 ← this file
-  discovery/                ← gitignored samples, HAR, notes
-  docs/
-    SCOPE.md                ← approved v1 scope
-    DATA_MODEL.md           ← entities & relations
-    API_INVENTORY.md        ← endpoints from HAR
-  apps/web/                 ← Next.js app (when we build)
-  packages/db/              ← Prisma schema + seed
-  docker-compose.yml
+  README.md
+  docker-compose.yml              # Postgres → host port 5434
+  docs/schema.sql                 # GenFlow business DDL reference
+  apps/web/
+    prisma/
+      schema.prisma               # Fabric columns + audit fields
+      seed.ts
+    .env                          # DATABASE_URL (gitignored)
+    src/
+      app/                        # pages + /api/*
+      components/
+        AppShell.tsx
+        CreateForm.tsx            # add forms
+        EditRecordButton.tsx      # edit modal
+        EditedBadge.tsx           # Edited label
+        EntrySection.tsx
+        ui.tsx
+      lib/
+        prisma.ts
+        format.ts
+        formOptions.ts
+        formFields.ts
+        ids.ts
 ```
 
 ---
 
-## 11. Risks & expectations
+## Run locally (Docker Desktop)
 
-| Risk | Mitigation |
-|------|------------|
-| Continuum is large | Hard scope A2; expand later |
-| Some UI is server-rendered / obfuscated | Screenshots + DOM notes still enough for lookalike |
-| Auth is complex (SSO, MFA) | Replica uses simple email/password first |
-| Exact visual clone needs their CSS/assets | Approximate layout; do not scrape copyrighted assets without permission |
-| HAR contains secrets | Sanitize; never commit tokens |
+1. Start **Docker Desktop**.
+2. From the repo root:
+
+```bash
+docker compose up -d
+
+cd apps/web
+npm install
+npx prisma db push
+npm run db:seed
+npm run dev
+```
+
+3. Open [http://localhost:3000](http://localhost:3000).
+
+| Item | Value |
+|------|--------|
+| App | http://localhost:3000 |
+| Postgres host port | **5434** → container `5432` |
+| User / password / DB | `continuum` / `continuum` / `continuum_demo` |
+| `DATABASE_URL` | `postgresql://continuum:continuum@127.0.0.1:5434/continuum_demo?schema=public` |
+
+> Host port **5434** avoids conflict with local Postgres often already on `5432` / `5433`.
+
+| Command | Purpose |
+|---------|---------|
+| `docker compose up -d` | Start Postgres |
+| `docker compose down` | Stop Postgres |
+| `npm run dev` | Start UI + APIs |
+| `npm run db:seed` | Reseed 12 rows per table |
+| `npm run db:reset` | Reset schema + reseed |
+
+After Prisma schema changes, restart `npm run dev` so the app picks up the new client.
 
 ---
 
-## Next step
+## Notes
 
-Pick **Fidelity + Model source** (section 9).  
-If you choose **B1**, start a recording session with the click path in section 8 and share sanitized outputs — then we lock scope and begin Phase 1.
+- Internal demos / prototyping only — no Continuum trademarks or real customer data in the repo.
+- Dates and periods stay `TEXT` to match the Fabric export (`YYYY-MM`, etc.).
+- `docs/schema.sql` is the Fabric business DDL; Prisma also defines `created_at` / `updated_at` / `is_edited`.
